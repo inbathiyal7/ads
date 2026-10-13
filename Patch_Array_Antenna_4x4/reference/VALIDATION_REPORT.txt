@@ -1,0 +1,104 @@
+Static validation of Patch_Array_Antenna_4x4
+(checks done by generate_ads_packages.py; none of them runs ADS)
+
+-- geometry --
+PASS  workbook coordinate list has 13 entries and closes on (0, 0)
+PASS  all 16 elements: 12 distinct vertices (closing duplicate removed)
+PASS  all 16 elements: every edge is horizontal or vertical
+PASS  all 16 elements: polygon is simple (no self-intersection, no touching edges)
+PASS  all 16 elements: copper area 849.04 mm^2 = 29.2^2 - 2(1.4 x 12) + 3 x 10
+PASS  all 16 elements: bounding box 29.2 x 39.2 mm (29.2 patch + 10 feed stub)
+PASS  all 16 elements: its pin is the midpoint of the 3.0 mm feed-line end edge
+PASS  array has 16 elements and 16 pins
+PASS  offsets are (0,50,100,150) x (0,-50,-100,-150), row 1 first
+PASS  pins P1..P16 numbered row by row, each at its element's feed reference
+PASS  all 16 elements are pure translations of element 1 (same shape and orientation)
+PASS  element 1 is the Part 1 patch moved so its feed point sits at (0, 0)
+PASS  no two elements overlap or touch (smallest clearance 10.8 mm)
+PASS  array copper extent 179.2 x 189.2 mm
+
+-- substrate and materials --
+PASS  materials: Copper, conductivity 5.8e7 Siemens/m
+PASS  materials: FR4, Er 4.6, TanD 0.001
+PASS  materials: FR4 uses the Svensson/Djordjevic model at 1 GHz (as in the workbook screenshot)
+PASS  substrate: AIR / cover / dielectric / interface / AIR, listed bottom to top
+PASS  substrate: infinite ground plane (cover) under the dielectric
+PASS  substrate: FR4 slab 1.6 mm
+PASS  substrate: open air half-space above the patch (needed for far fields)
+PASS  substrate: layout layer 1 (cond) mapped to the top FR4 surface
+PASS  substrate: cond is Copper, 35 micron
+PASS  substrate: cond is a thick conductor set to 'Intrude into substrate'
+PASS  substrate references only materials that materials.matdb defines
+
+-- AEL builder script --
+PASS  AEL: braces, parentheses and string quotes balance
+PASS  AEL: calls only the 32 ADS functions verified in the Keysight AEL manual
+PASS  AEL: all 9 own functions carry the paa_ prefix
+PASS  AEL: every statement line is terminated
+PASS  AEL: 16 polygon(s) opened and closed
+PASS  AEL: the 192 db_add_point coordinates equal the validated geometry
+PASS  AEL: 16 db_create_pin call(s) match the validated pin list (numbers, names, positions)
+PASS  AEL: the materials file it writes is byte-identical to ads_files/materials.matdb
+PASS  AEL: the substrate file it writes is byte-identical to ads_files/Patch_FR4_1p6mm.subst
+PASS  AEL: EM setup goes to <library>/%Patch_%Array_%Antenna_4x4/em%Setup
+PASS  AEL: geometry is saved before any file is written or the workspace reopened
+
+-- EM setup state file --
+PASS  EM setup: well-formed XML, root <EmSimSetup>
+PASS  EM setup: uses only elements that occur in the ADS-written reference state file
+PASS  EM setup: frequency plan row 1 = Adaptive, 2.3 GHz to 2.5 GHz, 50 (max)
+PASS  EM setup: substrate reference <library>:Patch_FR4_1p6mm (library name filled in by the AEL script)
+PASS  EM setup: bound to Patch_Array_Antenna_4x4 / layout
+PASS  EM setup: dataset Patch_Array_Antenna_4x4_MomUW (fitted data in Patch_Array_Antenna_4x4_MomUW_a)
+PASS  EM setup: Momentum microwave mode (required for far fields), S-parameter simulation
+PASS  EM setup: no cached pins/ports - ADS derives the 16 port(s) from the layout pins
+PASS  EM setup: layer option maps reference only the cond layer
+
+-- data display --
+PASS  Patch_Array_Antenna_4x4_Results.dds: braces, parentheses and string quotes balance
+PASS  Patch_Array_Antenna_4x4_Results.dds: object types ['Equation', 'Plot', 'SmithChart', 'Text'] all occur in the ADS-saved reference display
+PASS  Patch_Array_Antenna_4x4_Results.dds: every property name occurs in the reference display
+PASS  Patch_Array_Antenna_4x4_Results.dds: 69 object ids, all unique
+PASS  Patch_Array_Antenna_4x4_Results.dds: every plotted variable is defined by an equation on the page
+
+-- fallback import files --
+PASS  GDSII: re-read 16 closed boundary element(s), coordinates identical to the geometry
+PASS  GDSII: everything on layer 1 (cond in the Standard ADS Layers)
+PASS  GDSII: database unit 1 nm, user unit 1 um
+PASS  DXF: 16 closed polyline(s) on layer cond, millimetres
+
+RESULT: all static checks passed
+
+ADS functions used by the AEL script and where each is documented:
+    db_add_point                             ADS 2011 AEL manual
+    db_add_polygon                           ADS 2011 AEL manual
+    db_create_pin                            ADS 2011 AEL manual
+    db_end                                   ADS 2011 AEL manual
+    db_get_context_unit_name                 ADS 2011 AEL manual
+    db_get_layerid                           ADS 2011 AEL manual
+    db_get_mks_to_uu_factor                  ADS 2011 AEL manual
+    db_save_design_without_prompting         ADS 2011 AEL manual
+    de_cellview_exists                       ADS 2011 AEL manual
+    de_close_workspace_without_prompting     ADS 2011 AEL manual
+    de_copy_file                             ADS 2011 AEL manual
+    de_create_new_layout_view                ADS 2011 AEL manual
+    de_get_design_context_from_name          ADS 2011 AEL manual
+    de_info                                  ADS 2011 AEL manual
+    de_is_library_open                       ADS 2011 AEL manual
+    de_is_project_or_workspace_open          ADS 2011 AEL manual
+    de_open_workspace                        ADS 2011 AEL manual
+    de_show_context_in_new_window            ADS 2011 AEL manual
+    fclose                                   ADS 2011 AEL manual
+    fgets                                    ADS 2011 AEL manual
+    fopen                                    ADS 2011 AEL manual
+    fputs                                    ADS 2011 AEL manual
+    getcwd                                   ADS 2011 AEL manual
+    index                                    ADS 2011 AEL manual
+    leftstr                                  ADS 2011 AEL manual
+    list                                     ADS 2011 AEL manual
+    mkdir                                    ADS 2011 AEL manual
+    nth                                      ADS 2011 AEL manual
+    rightstr                                 ADS 2011 AEL manual
+    strcat                                   ADS 2011 AEL manual
+    strlen                                   ADS 2011 AEL manual
+    what_file                                ADS 2011 AEL manual

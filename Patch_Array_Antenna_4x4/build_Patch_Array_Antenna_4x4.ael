@@ -1,0 +1,644 @@
+// ============================================================================================
+// build_Patch_Array_Antenna_4x4.ael
+//
+// Part 2 - 4 x 4 patch array, 2.4 GHz, 16 ports
+// Source: RF and Microwave Engineering Lab workbook, PDF pages 75-86.
+//
+// WHAT IT DOES (inside the ADS workspace that is currently open):
+//   1. creates the cell Patch_Array_Antenna_4x4 with a layout view
+//   2. draws the copper on layer cond:drawing from the workbook coordinates (mm)
+//   3. adds 16 pins (P1..P16) on the open end of every feed line
+//   4. saves the design
+//   5. writes the substrate Patch_FR4_1p6mm (FR4 1.6 mm, Er 4.6, TanD 0.001; Copper 35 um,
+//      5.8e7 S/m, intrude into substrate) and its materials into the library
+//   6. writes an EM setup: Momentum microwave, adaptive 2.3-2.5 GHz, that substrate
+//   7. copies the data display Patch_Array_Antenna_4x4_Results.dds into the workspace
+//   8. closes and reopens the workspace so ADS reads the new files, then shows the layout
+//
+// HOW TO RUN:
+//   a. ADS: File > New > Workspace (name e.g. Patch_Array_Antenna_4x4_wrk).  Keep the default library and choose
+//      the layout technology "Standard ADS Layers, 0.0001 millimeter layout resolution".
+//   b. ADS Main window: Tools > Command Line...  then type, with YOUR path and forward slashes:
+//          load("C:/path/to/Patch_Array_Antenna_4x4/build_Patch_Array_Antenna_4x4.ael");
+//      and press Apply.
+//
+// Steps 1-4 use only AEL functions documented in the ADS 2011 AEL manual (and still present
+// in ADS 2025).  Steps 5-7 write text files in the formats ADS itself writes.  Nothing here
+// was executed in ADS by its author - see README.md for what was and was not verified.
+// ============================================================================================
+
+// ---- settings you may change ---------------------------------------------------------
+decl PAA_LIBRARY           = "";     // "" = first library defined in the workspace lib.defs
+decl PAA_WRITE_SUBSTRATE   = TRUE;   // step 5
+decl PAA_WRITE_EM_SETUP    = TRUE;   // step 6 (set FALSE to create the EM setup by hand)
+decl PAA_COPY_DISPLAY      = TRUE;   // step 7
+decl PAA_REOPEN_WORKSPACE  = TRUE;   // step 8
+
+// ---- fixed names ---------------------------------------------------------------------
+decl PAA_CELL     = "Patch_Array_Antenna_4x4";
+decl PAA_CELL_DIR = "%Patch_%Array_%Antenna_4x4";   // on-disk (OpenAccess) name of that cell
+decl PAA_SUBST    = "Patch_FR4_1p6mm";
+decl PAA_SCRIPT   = "build_Patch_Array_Antenna_4x4.ael";
+decl PAA_DISPLAY  = "Patch_Array_Antenna_4x4_Results.dds";
+decl paa_log = "";
+
+defun paa_note(sMsg)
+{
+    paa_log = strcat(paa_log, sMsg, "\n");
+    fputs(stderr, sMsg);
+}
+
+defun paa_file_exists(sFile)
+{
+    decl fId = fopen(sFile, "R");
+    if (fId == NULL)
+        return FALSE;
+    fclose(fId);
+    return TRUE;
+}
+
+// Returns list(libraryName, libraryDirectory) read from the workspace lib.defs, or NULL.
+defun paa_find_library(sWrk)
+{
+    decl fId, sLine, sRest, nPos, sName, sDir;
+    if (PAA_LIBRARY != "")
+        return list(PAA_LIBRARY, strcat(sWrk, "/", PAA_LIBRARY));
+    fId = fopen(strcat(sWrk, "/lib.defs"), "R");
+    if (fId == NULL)
+        return NULL;
+    sLine = fgets(fId);
+    while (sLine != NULL)
+    {
+        if (index(sLine, "DEFINE ") == 0)
+        {
+            sRest = rightstr(sLine, strlen(sLine) - 7);
+            nPos = index(sRest, " ");
+            if (nPos > 0)
+            {
+                sName = leftstr(sRest, nPos);
+                sDir = rightstr(sRest, strlen(sRest) - nPos - 1);
+                if (index(sDir, "$") != 0)
+                {
+                    fclose(fId);
+                    if (index(sDir, "./") == 0)
+                        sDir = rightstr(sDir, strlen(sDir) - 2);
+                    if ((index(sDir, ":") != 1) && (index(sDir, "/") != 0))
+                        sDir = strcat(sWrk, "/", sDir);
+                    return list(sName, sDir);
+                }
+            }
+        }
+        sLine = fgets(fId);
+    }
+    fclose(fId);
+    return NULL;
+}
+
+// Steps 2-3.  k converts millimetres to the layout's user units, whatever they are.
+defun paa_draw(ctx, lay, k)
+{
+    decl shp;
+    // element 1, feed reference at (0.0, 0.0) mm
+    db_add_polygon(ctx);
+    db_add_point(ctx, -14.6*k, 10.0*k);
+    db_add_point(ctx, -14.6*k, 39.2*k);
+    db_add_point(ctx, 14.6*k, 39.2*k);
+    db_add_point(ctx, 14.6*k, 10.0*k);
+    db_add_point(ctx, 2.9*k, 10.0*k);
+    db_add_point(ctx, 2.9*k, 22.0*k);
+    db_add_point(ctx, 1.5*k, 22.0*k);
+    db_add_point(ctx, 1.5*k, 0.0*k);
+    db_add_point(ctx, -1.5*k, 0.0*k);
+    db_add_point(ctx, -1.5*k, 22.0*k);
+    db_add_point(ctx, -2.9*k, 22.0*k);
+    db_add_point(ctx, -2.9*k, 10.0*k);
+    shp = db_end(ctx, lay);
+    if (shp == NULL)
+        paa_note("! polygon 1 was not created");
+    // element 2, feed reference at (50.0, 0.0) mm
+    db_add_polygon(ctx);
+    db_add_point(ctx, 35.4*k, 10.0*k);
+    db_add_point(ctx, 35.4*k, 39.2*k);
+    db_add_point(ctx, 64.6*k, 39.2*k);
+    db_add_point(ctx, 64.6*k, 10.0*k);
+    db_add_point(ctx, 52.9*k, 10.0*k);
+    db_add_point(ctx, 52.9*k, 22.0*k);
+    db_add_point(ctx, 51.5*k, 22.0*k);
+    db_add_point(ctx, 51.5*k, 0.0*k);
+    db_add_point(ctx, 48.5*k, 0.0*k);
+    db_add_point(ctx, 48.5*k, 22.0*k);
+    db_add_point(ctx, 47.1*k, 22.0*k);
+    db_add_point(ctx, 47.1*k, 10.0*k);
+    shp = db_end(ctx, lay);
+    if (shp == NULL)
+        paa_note("! polygon 2 was not created");
+    // element 3, feed reference at (100.0, 0.0) mm
+    db_add_polygon(ctx);
+    db_add_point(ctx, 85.4*k, 10.0*k);
+    db_add_point(ctx, 85.4*k, 39.2*k);
+    db_add_point(ctx, 114.6*k, 39.2*k);
+    db_add_point(ctx, 114.6*k, 10.0*k);
+    db_add_point(ctx, 102.9*k, 10.0*k);
+    db_add_point(ctx, 102.9*k, 22.0*k);
+    db_add_point(ctx, 101.5*k, 22.0*k);
+    db_add_point(ctx, 101.5*k, 0.0*k);
+    db_add_point(ctx, 98.5*k, 0.0*k);
+    db_add_point(ctx, 98.5*k, 22.0*k);
+    db_add_point(ctx, 97.1*k, 22.0*k);
+    db_add_point(ctx, 97.1*k, 10.0*k);
+    shp = db_end(ctx, lay);
+    if (shp == NULL)
+        paa_note("! polygon 3 was not created");
+    // element 4, feed reference at (150.0, 0.0) mm
+    db_add_polygon(ctx);
+    db_add_point(ctx, 135.4*k, 10.0*k);
+    db_add_point(ctx, 135.4*k, 39.2*k);
+    db_add_point(ctx, 164.6*k, 39.2*k);
+    db_add_point(ctx, 164.6*k, 10.0*k);
+    db_add_point(ctx, 152.9*k, 10.0*k);
+    db_add_point(ctx, 152.9*k, 22.0*k);
+    db_add_point(ctx, 151.5*k, 22.0*k);
+    db_add_point(ctx, 151.5*k, 0.0*k);
+    db_add_point(ctx, 148.5*k, 0.0*k);
+    db_add_point(ctx, 148.5*k, 22.0*k);
+    db_add_point(ctx, 147.1*k, 22.0*k);
+    db_add_point(ctx, 147.1*k, 10.0*k);
+    shp = db_end(ctx, lay);
+    if (shp == NULL)
+        paa_note("! polygon 4 was not created");
+    // element 5, feed reference at (0.0, -50.0) mm
+    db_add_polygon(ctx);
+    db_add_point(ctx, -14.6*k, -40.0*k);
+    db_add_point(ctx, -14.6*k, -10.8*k);
+    db_add_point(ctx, 14.6*k, -10.8*k);
+    db_add_point(ctx, 14.6*k, -40.0*k);
+    db_add_point(ctx, 2.9*k, -40.0*k);
+    db_add_point(ctx, 2.9*k, -28.0*k);
+    db_add_point(ctx, 1.5*k, -28.0*k);
+    db_add_point(ctx, 1.5*k, -50.0*k);
+    db_add_point(ctx, -1.5*k, -50.0*k);
+    db_add_point(ctx, -1.5*k, -28.0*k);
+    db_add_point(ctx, -2.9*k, -28.0*k);
+    db_add_point(ctx, -2.9*k, -40.0*k);
+    shp = db_end(ctx, lay);
+    if (shp == NULL)
+        paa_note("! polygon 5 was not created");
+    // element 6, feed reference at (50.0, -50.0) mm
+    db_add_polygon(ctx);
+    db_add_point(ctx, 35.4*k, -40.0*k);
+    db_add_point(ctx, 35.4*k, -10.8*k);
+    db_add_point(ctx, 64.6*k, -10.8*k);
+    db_add_point(ctx, 64.6*k, -40.0*k);
+    db_add_point(ctx, 52.9*k, -40.0*k);
+    db_add_point(ctx, 52.9*k, -28.0*k);
+    db_add_point(ctx, 51.5*k, -28.0*k);
+    db_add_point(ctx, 51.5*k, -50.0*k);
+    db_add_point(ctx, 48.5*k, -50.0*k);
+    db_add_point(ctx, 48.5*k, -28.0*k);
+    db_add_point(ctx, 47.1*k, -28.0*k);
+    db_add_point(ctx, 47.1*k, -40.0*k);
+    shp = db_end(ctx, lay);
+    if (shp == NULL)
+        paa_note("! polygon 6 was not created");
+    // element 7, feed reference at (100.0, -50.0) mm
+    db_add_polygon(ctx);
+    db_add_point(ctx, 85.4*k, -40.0*k);
+    db_add_point(ctx, 85.4*k, -10.8*k);
+    db_add_point(ctx, 114.6*k, -10.8*k);
+    db_add_point(ctx, 114.6*k, -40.0*k);
+    db_add_point(ctx, 102.9*k, -40.0*k);
+    db_add_point(ctx, 102.9*k, -28.0*k);
+    db_add_point(ctx, 101.5*k, -28.0*k);
+    db_add_point(ctx, 101.5*k, -50.0*k);
+    db_add_point(ctx, 98.5*k, -50.0*k);
+    db_add_point(ctx, 98.5*k, -28.0*k);
+    db_add_point(ctx, 97.1*k, -28.0*k);
+    db_add_point(ctx, 97.1*k, -40.0*k);
+    shp = db_end(ctx, lay);
+    if (shp == NULL)
+        paa_note("! polygon 7 was not created");
+    // element 8, feed reference at (150.0, -50.0) mm
+    db_add_polygon(ctx);
+    db_add_point(ctx, 135.4*k, -40.0*k);
+    db_add_point(ctx, 135.4*k, -10.8*k);
+    db_add_point(ctx, 164.6*k, -10.8*k);
+    db_add_point(ctx, 164.6*k, -40.0*k);
+    db_add_point(ctx, 152.9*k, -40.0*k);
+    db_add_point(ctx, 152.9*k, -28.0*k);
+    db_add_point(ctx, 151.5*k, -28.0*k);
+    db_add_point(ctx, 151.5*k, -50.0*k);
+    db_add_point(ctx, 148.5*k, -50.0*k);
+    db_add_point(ctx, 148.5*k, -28.0*k);
+    db_add_point(ctx, 147.1*k, -28.0*k);
+    db_add_point(ctx, 147.1*k, -40.0*k);
+    shp = db_end(ctx, lay);
+    if (shp == NULL)
+        paa_note("! polygon 8 was not created");
+    // element 9, feed reference at (0.0, -100.0) mm
+    db_add_polygon(ctx);
+    db_add_point(ctx, -14.6*k, -90.0*k);
+    db_add_point(ctx, -14.6*k, -60.8*k);
+    db_add_point(ctx, 14.6*k, -60.8*k);
+    db_add_point(ctx, 14.6*k, -90.0*k);
+    db_add_point(ctx, 2.9*k, -90.0*k);
+    db_add_point(ctx, 2.9*k, -78.0*k);
+    db_add_point(ctx, 1.5*k, -78.0*k);
+    db_add_point(ctx, 1.5*k, -100.0*k);
+    db_add_point(ctx, -1.5*k, -100.0*k);
+    db_add_point(ctx, -1.5*k, -78.0*k);
+    db_add_point(ctx, -2.9*k, -78.0*k);
+    db_add_point(ctx, -2.9*k, -90.0*k);
+    shp = db_end(ctx, lay);
+    if (shp == NULL)
+        paa_note("! polygon 9 was not created");
+    // element 10, feed reference at (50.0, -100.0) mm
+    db_add_polygon(ctx);
+    db_add_point(ctx, 35.4*k, -90.0*k);
+    db_add_point(ctx, 35.4*k, -60.8*k);
+    db_add_point(ctx, 64.6*k, -60.8*k);
+    db_add_point(ctx, 64.6*k, -90.0*k);
+    db_add_point(ctx, 52.9*k, -90.0*k);
+    db_add_point(ctx, 52.9*k, -78.0*k);
+    db_add_point(ctx, 51.5*k, -78.0*k);
+    db_add_point(ctx, 51.5*k, -100.0*k);
+    db_add_point(ctx, 48.5*k, -100.0*k);
+    db_add_point(ctx, 48.5*k, -78.0*k);
+    db_add_point(ctx, 47.1*k, -78.0*k);
+    db_add_point(ctx, 47.1*k, -90.0*k);
+    shp = db_end(ctx, lay);
+    if (shp == NULL)
+        paa_note("! polygon 10 was not created");
+    // element 11, feed reference at (100.0, -100.0) mm
+    db_add_polygon(ctx);
+    db_add_point(ctx, 85.4*k, -90.0*k);
+    db_add_point(ctx, 85.4*k, -60.8*k);
+    db_add_point(ctx, 114.6*k, -60.8*k);
+    db_add_point(ctx, 114.6*k, -90.0*k);
+    db_add_point(ctx, 102.9*k, -90.0*k);
+    db_add_point(ctx, 102.9*k, -78.0*k);
+    db_add_point(ctx, 101.5*k, -78.0*k);
+    db_add_point(ctx, 101.5*k, -100.0*k);
+    db_add_point(ctx, 98.5*k, -100.0*k);
+    db_add_point(ctx, 98.5*k, -78.0*k);
+    db_add_point(ctx, 97.1*k, -78.0*k);
+    db_add_point(ctx, 97.1*k, -90.0*k);
+    shp = db_end(ctx, lay);
+    if (shp == NULL)
+        paa_note("! polygon 11 was not created");
+    // element 12, feed reference at (150.0, -100.0) mm
+    db_add_polygon(ctx);
+    db_add_point(ctx, 135.4*k, -90.0*k);
+    db_add_point(ctx, 135.4*k, -60.8*k);
+    db_add_point(ctx, 164.6*k, -60.8*k);
+    db_add_point(ctx, 164.6*k, -90.0*k);
+    db_add_point(ctx, 152.9*k, -90.0*k);
+    db_add_point(ctx, 152.9*k, -78.0*k);
+    db_add_point(ctx, 151.5*k, -78.0*k);
+    db_add_point(ctx, 151.5*k, -100.0*k);
+    db_add_point(ctx, 148.5*k, -100.0*k);
+    db_add_point(ctx, 148.5*k, -78.0*k);
+    db_add_point(ctx, 147.1*k, -78.0*k);
+    db_add_point(ctx, 147.1*k, -90.0*k);
+    shp = db_end(ctx, lay);
+    if (shp == NULL)
+        paa_note("! polygon 12 was not created");
+    // element 13, feed reference at (0.0, -150.0) mm
+    db_add_polygon(ctx);
+    db_add_point(ctx, -14.6*k, -140.0*k);
+    db_add_point(ctx, -14.6*k, -110.8*k);
+    db_add_point(ctx, 14.6*k, -110.8*k);
+    db_add_point(ctx, 14.6*k, -140.0*k);
+    db_add_point(ctx, 2.9*k, -140.0*k);
+    db_add_point(ctx, 2.9*k, -128.0*k);
+    db_add_point(ctx, 1.5*k, -128.0*k);
+    db_add_point(ctx, 1.5*k, -150.0*k);
+    db_add_point(ctx, -1.5*k, -150.0*k);
+    db_add_point(ctx, -1.5*k, -128.0*k);
+    db_add_point(ctx, -2.9*k, -128.0*k);
+    db_add_point(ctx, -2.9*k, -140.0*k);
+    shp = db_end(ctx, lay);
+    if (shp == NULL)
+        paa_note("! polygon 13 was not created");
+    // element 14, feed reference at (50.0, -150.0) mm
+    db_add_polygon(ctx);
+    db_add_point(ctx, 35.4*k, -140.0*k);
+    db_add_point(ctx, 35.4*k, -110.8*k);
+    db_add_point(ctx, 64.6*k, -110.8*k);
+    db_add_point(ctx, 64.6*k, -140.0*k);
+    db_add_point(ctx, 52.9*k, -140.0*k);
+    db_add_point(ctx, 52.9*k, -128.0*k);
+    db_add_point(ctx, 51.5*k, -128.0*k);
+    db_add_point(ctx, 51.5*k, -150.0*k);
+    db_add_point(ctx, 48.5*k, -150.0*k);
+    db_add_point(ctx, 48.5*k, -128.0*k);
+    db_add_point(ctx, 47.1*k, -128.0*k);
+    db_add_point(ctx, 47.1*k, -140.0*k);
+    shp = db_end(ctx, lay);
+    if (shp == NULL)
+        paa_note("! polygon 14 was not created");
+    // element 15, feed reference at (100.0, -150.0) mm
+    db_add_polygon(ctx);
+    db_add_point(ctx, 85.4*k, -140.0*k);
+    db_add_point(ctx, 85.4*k, -110.8*k);
+    db_add_point(ctx, 114.6*k, -110.8*k);
+    db_add_point(ctx, 114.6*k, -140.0*k);
+    db_add_point(ctx, 102.9*k, -140.0*k);
+    db_add_point(ctx, 102.9*k, -128.0*k);
+    db_add_point(ctx, 101.5*k, -128.0*k);
+    db_add_point(ctx, 101.5*k, -150.0*k);
+    db_add_point(ctx, 98.5*k, -150.0*k);
+    db_add_point(ctx, 98.5*k, -128.0*k);
+    db_add_point(ctx, 97.1*k, -128.0*k);
+    db_add_point(ctx, 97.1*k, -140.0*k);
+    shp = db_end(ctx, lay);
+    if (shp == NULL)
+        paa_note("! polygon 15 was not created");
+    // element 16, feed reference at (150.0, -150.0) mm
+    db_add_polygon(ctx);
+    db_add_point(ctx, 135.4*k, -140.0*k);
+    db_add_point(ctx, 135.4*k, -110.8*k);
+    db_add_point(ctx, 164.6*k, -110.8*k);
+    db_add_point(ctx, 164.6*k, -140.0*k);
+    db_add_point(ctx, 152.9*k, -140.0*k);
+    db_add_point(ctx, 152.9*k, -128.0*k);
+    db_add_point(ctx, 151.5*k, -128.0*k);
+    db_add_point(ctx, 151.5*k, -150.0*k);
+    db_add_point(ctx, 148.5*k, -150.0*k);
+    db_add_point(ctx, 148.5*k, -128.0*k);
+    db_add_point(ctx, 147.1*k, -128.0*k);
+    db_add_point(ctx, 147.1*k, -140.0*k);
+    shp = db_end(ctx, lay);
+    if (shp == NULL)
+        paa_note("! polygon 16 was not created");
+    // pins: x, y, angle 270 (pointing out of the feed-line end), layer, number, name
+    db_create_pin(ctx, 0.0*k, 0.0*k, 270, lay, 1, "P1");
+    db_create_pin(ctx, 50.0*k, 0.0*k, 270, lay, 2, "P2");
+    db_create_pin(ctx, 100.0*k, 0.0*k, 270, lay, 3, "P3");
+    db_create_pin(ctx, 150.0*k, 0.0*k, 270, lay, 4, "P4");
+    db_create_pin(ctx, 0.0*k, -50.0*k, 270, lay, 5, "P5");
+    db_create_pin(ctx, 50.0*k, -50.0*k, 270, lay, 6, "P6");
+    db_create_pin(ctx, 100.0*k, -50.0*k, 270, lay, 7, "P7");
+    db_create_pin(ctx, 150.0*k, -50.0*k, 270, lay, 8, "P8");
+    db_create_pin(ctx, 0.0*k, -100.0*k, 270, lay, 9, "P9");
+    db_create_pin(ctx, 50.0*k, -100.0*k, 270, lay, 10, "P10");
+    db_create_pin(ctx, 100.0*k, -100.0*k, 270, lay, 11, "P11");
+    db_create_pin(ctx, 150.0*k, -100.0*k, 270, lay, 12, "P12");
+    db_create_pin(ctx, 0.0*k, -150.0*k, 270, lay, 13, "P13");
+    db_create_pin(ctx, 50.0*k, -150.0*k, 270, lay, 14, "P14");
+    db_create_pin(ctx, 100.0*k, -150.0*k, 270, lay, 15, "P15");
+    db_create_pin(ctx, 150.0*k, -150.0*k, 270, lay, 16, "P16");
+}
+
+defun paa_write_materials(sLibDir)
+{
+    decl sFile = strcat(sLibDir, "/", "materials.matdb");
+    decl fId;
+    if (paa_file_exists(sFile))
+    {
+        paa_note(strcat("- kept the existing file ", sFile, " (not overwritten)"));
+        return FALSE;
+    }
+    fId = fopen(sFile, "W");
+    if (fId == NULL)
+    {
+        paa_note(strcat("! could not write ", sFile));
+        return FALSE;
+    }
+    fputs(fId, "<!DOCTYPE Materials>");
+    fputs(fId, "<Materials>");
+    fputs(fId, "    <Conductors>");
+    fputs(fId, "        <Conductor parmtype=\"1\" imag=\"\" name=\"Copper\" real=\"5.8e7 Siemens/m\"/>");
+    fputs(fId, "    </Conductors>");
+    fputs(fId, "    <Dielectrics>");
+    fputs(fId, "        <Dielectric loss_type=\"1\" mur_real=\"1\" lowfreq=\"1 KHz\" valuefreq=\"1 GHz\" er_imag=\"\" highfreq=\"1 THz\" er_loss=\"0.001\" name=\"FR4\" er_real=\"4.6\" mur_imag=\"\"/>");
+    fputs(fId, "    </Dielectrics>");
+    fputs(fId, "    <Semiconductors/>");
+    fputs(fId, "    <roughness/>");
+    fputs(fId, "</Materials>");
+    fclose(fId);
+    paa_note("- wrote materials.matdb (Copper 5.8e7 S/m; FR4 Er 4.6, TanD 0.001)");
+    return TRUE;
+}
+
+defun paa_write_substrate(sLibDir)
+{
+    decl sFile = strcat(sLibDir, "/", strcat(PAA_SUBST, ".subst"));
+    decl fId;
+    if (paa_file_exists(sFile))
+    {
+        paa_note(strcat("- kept the existing file ", sFile, " (not overwritten)"));
+        return FALSE;
+    }
+    fId = fopen(sFile, "W");
+    if (fId == NULL)
+    {
+        paa_note(strcat("! could not write ", sFile));
+        return FALSE;
+    }
+    fputs(fId, "<!DOCTYPE Substrate>");
+    fputs(fId, "<SubstrateModel>");
+    fputs(fId, "    <stack>");
+    fputs(fId, "        <material materialname=\"AIR\"/>");
+    fputs(fId, "        <interface materialname=\"PERFECT_CONDUCTOR\" thick=\"0\" thickunit=\"micron\" groundplane=\"1\"/>");
+    fputs(fId, "        <material materialname=\"FR4\" thick=\"1.6\" thickunit=\"millimeter\"/>");
+    fputs(fId, "        <interface materialname=\"\" thick=\"0\" thickunit=\"micron\"/>");
+    fputs(fId, "        <material materialname=\"AIR\"/>");
+    fputs(fId, "    </stack>");
+    fputs(fId, "    <layers>");
+    fputs(fId, "        <layer materialname=\"Copper\" toprough=\"\" bottomrough=\"\" thick=\"35\" precedence=\"1\" sheet=\"0\" thickunit=\"micron\" layer=\"1\" negative=\"0\" subtype=\"0\" expand=\"0\" index=\"1\"/>");
+    fputs(fId, "    </layers>");
+    fputs(fId, "    <vias/>");
+    fputs(fId, "    <substrates/>");
+    fputs(fId, "</SubstrateModel>");
+    fclose(fId);
+    paa_note("- wrote substrate Patch_FR4_1p6mm (FR4 1.6 mm on ground, cond = Copper 35 um intruding)");
+    return TRUE;
+}
+
+defun paa_write_default_substrate(sLibDir, sLib)
+{
+    decl sFile = strcat(sLibDir, "/eesof_lib.cfg");
+    decl fId;
+    if (paa_file_exists(sFile))
+        return FALSE;
+    fId = fopen(sFile, "W");
+    if (fId == NULL)
+        return FALSE;
+    fputs(fId, strcat("DEFAULT_SUBSTRATE=", sLib, ":", PAA_SUBST));
+    fclose(fId);
+    return TRUE;
+}
+
+// Step 6.  The emSetup view is a folder holding emStateFile.xml, an empty marker file and
+// master.tag.  The state file is copied from ads_files/ with three lines filled in.
+defun paa_write_em_setup(sPkg, sWrk, sLib, sLibDir)
+{
+    decl sView = strcat(sLibDir, "/", PAA_CELL_DIR, "/em%Setup");
+    decl sSrc = strcat(sPkg, "ads_files/emStateFile.xml");
+    decl sDst = strcat(sView, "/emStateFile.xml");
+    decl fIn, fOut, fId, sLine;
+    if (paa_file_exists(sDst))
+    {
+        paa_note("- an EM setup already exists for this cell: left untouched");
+        return FALSE;
+    }
+    fIn = fopen(sSrc, "R");
+    if (fIn == NULL)
+    {
+        paa_note(strcat("! EM setup NOT written: cannot read ", sSrc));
+        return FALSE;
+    }
+    mkdir(sView);
+    fOut = fopen(sDst, "W");
+    if (fOut == NULL)
+    {
+        fclose(fIn);
+        paa_note(strcat("! EM setup NOT written: cannot create ", sDst));
+        return FALSE;
+    }
+    sLine = fgets(fIn);
+    while (sLine != NULL)
+    {
+        if (index(sLine, "<workspaceText>") > -1)
+            sLine = strcat("      <workspaceText>", sWrk, "</workspaceText>");
+        if (index(sLine, "<libraryText>") > -1)
+            sLine = strcat("      <libraryText>", sLib, "</libraryText>");
+        if (index(sLine, "<libSubstName>") > -1)
+            sLine = strcat("      <libSubstName>", sLib, ":", PAA_SUBST, "</libSubstName>");
+        fputs(fOut, sLine);
+        sLine = fgets(fIn);
+    }
+    fclose(fIn);
+    fclose(fOut);
+    fId = fopen(strcat(sView, "/eesof_em_setup.file"), "W");
+    if (fId != NULL)
+        fclose(fId);
+    de_copy_file(strcat(sPkg, "ads_files/master.tag"), strcat(sView, "/master.tag"));
+    if (!paa_file_exists(strcat(sView, "/master.tag")))
+    {
+        paa_note("! EM setup incomplete: master.tag could not be copied");
+        return FALSE;
+    }
+    paa_note("- wrote the EM setup (Momentum microwave, adaptive 2.3-2.5 GHz, substrate Patch_FR4_1p6mm)");
+    return TRUE;
+}
+
+defun paa_build()
+{
+    decl sWrk, lLib, sLib, sLibDir, sMe, sPkg, ctx, lay, k, bEm, sDsn;
+    paa_log = "";
+    bEm = FALSE;
+
+    if (!de_is_project_or_workspace_open())
+    {
+        de_info("No workspace is open.\n\nCreate one first (File > New > Workspace, Standard ADS Layers, 0.0001 millimeter), then load this script again.");
+        return FALSE;
+    }
+    sWrk = getcwd();
+    lLib = paa_find_library(sWrk);
+    if (lLib == NULL)
+    {
+        de_info(strcat("No library was found in ", sWrk, "/lib.defs.\n\nSet PAA_LIBRARY at the top of this script to the name of your library."));
+        return FALSE;
+    }
+    sLib = nth(0, lLib);
+    sLibDir = nth(1, lLib);
+    if (!de_is_library_open(sLib))
+    {
+        de_info(strcat("Library ", sLib, " is not open in this workspace."));
+        return FALSE;
+    }
+    if (de_cellview_exists(sLib, PAA_CELL, "layout"))
+    {
+        de_info(strcat("Cell ", PAA_CELL, " already has a layout in library ", sLib, ".\n\nNothing was changed. Delete that cell, or use a new workspace, and load this script again."));
+        return FALSE;
+    }
+
+    // where this script lives (for the files in ads_files/)
+    sMe = what_file(0);
+    sPkg = "";
+    if (strlen(sMe) >= strlen(PAA_SCRIPT))
+        sPkg = leftstr(sMe, strlen(sMe) - strlen(PAA_SCRIPT));
+
+    // ---- 1-4: layout, copper, pins, save ----
+    ctx = de_create_new_layout_view(sLib, PAA_CELL, "layout");
+    if (ctx == NULL)
+    {
+        de_info("The layout view could not be created.");
+        return FALSE;
+    }
+    lay = db_get_layerid(ctx, "cond", "drawing");
+    if (lay == NULL)
+    {
+        de_info("Layer cond:drawing was not found. The library must use the Standard ADS Layers technology.");
+        return FALSE;
+    }
+    k = db_get_mks_to_uu_factor(ctx) * 0.001;
+    paa_draw(ctx, lay, k);
+    db_save_design_without_prompting(ctx);
+    paa_note(strcat("Built ", sLib, ":", PAA_CELL, ":layout  (16 polygons, 16 pins, layout unit: ", db_get_context_unit_name(ctx), ")"));
+
+    // ---- 5: substrate and materials ----
+    if (PAA_WRITE_SUBSTRATE)
+    {
+        paa_write_materials(sLibDir);
+        paa_write_substrate(sLibDir);
+        paa_write_default_substrate(sLibDir, sLib);
+    }
+
+    // ---- 6: EM setup ----
+    if (PAA_WRITE_EM_SETUP)
+        bEm = paa_write_em_setup(sPkg, sWrk, sLib, sLibDir);
+
+    // ---- 7: data display ----
+    if (PAA_COPY_DISPLAY)
+    {
+        if (paa_file_exists(strcat(sWrk, "/", PAA_DISPLAY)))
+        {
+            paa_note("- kept the existing data display (not overwritten)");
+        }
+        else
+        {
+            if (paa_file_exists(strcat(sPkg, "ads_files/", PAA_DISPLAY)))
+            {
+                de_copy_file(strcat(sPkg, "ads_files/", PAA_DISPLAY), strcat(sWrk, "/", PAA_DISPLAY));
+                paa_note(strcat("- copied ", PAA_DISPLAY, " into the workspace"));
+            }
+            else
+            {
+                paa_note(strcat("! data display not copied: ads_files/", PAA_DISPLAY, " not found next to the script"));
+            }
+        }
+    }
+
+    // ---- 8: let ADS re-read the library from disk, then show the layout ----
+    sDsn = strcat(sLib, ":", PAA_CELL, ":layout");
+    if (PAA_REOPEN_WORKSPACE)
+    {
+        de_close_workspace_without_prompting();
+        de_open_workspace(sWrk);
+        ctx = de_get_design_context_from_name(sDsn);
+    }
+    de_show_context_in_new_window(ctx);
+
+    paa_note("");
+    paa_note("NEXT, in the layout window:");
+    if (bEm)
+    {
+        paa_note("  1. EM > Simulation Setup. Check Substrate = Patch_FR4_1p6mm and the frequency plan (Adaptive 2.3-2.5 GHz).");
+        paa_note("  2. Frequency plan > Add > Type: Single, 2.4 GHz (recommended: guarantees a solved 2.4 GHz point for the far field).");
+        paa_note("  3. Simulate.");
+    }
+    else
+    {
+        paa_note("  1. EM > Simulation Setup. Substrate: choose Patch_FR4_1p6mm.");
+        paa_note("  2. Frequency plan: Adaptive 2.3-2.5 GHz, then Add > Single 2.4 GHz.");
+        paa_note("  3. Simulate.");
+    }
+    paa_note(strcat("  4. Results: File > Open > Data Display > ", PAA_DISPLAY));
+    paa_note("  5. Far field: EM > Post-Processing > Far Field, 2.4 GHz, Compute (see README.md).");
+    de_info(paa_log);
+    return TRUE;
+}
+
+paa_build();
