@@ -1,0 +1,100 @@
+Static validation of Single_Patch_Antenna
+(checks done by generate_ads_packages.py; none of them runs ADS)
+
+-- geometry --
+PASS  workbook coordinate list has 13 entries and closes on (0, 0)
+PASS  patch: 12 distinct vertices (closing duplicate removed)
+PASS  patch: every edge is horizontal or vertical
+PASS  patch: polygon is simple (no self-intersection, no touching edges)
+PASS  patch: copper area 849.04 mm^2 = 29.2^2 - 2(1.4 x 12) + 3 x 10
+PASS  patch: bounding box 29.2 x 39.2 mm (29.2 patch + 10 feed stub)
+PASS  patch: pin P1 at (14.6, -10.0) is the midpoint of the 3.0 mm feed-line end edge
+PASS  vertices are identical to the workbook list, in the same order
+PASS  x stations 0 / 11.7 / 13.1 / 16.1 / 17.5 / 29.2 -> X = Z = 11.7, Y = 5.8, feed 3.0, slots 1.4 mm
+PASS  inset depth H = 12 mm
+
+-- substrate and materials --
+PASS  materials: Copper, conductivity 5.8e7 Siemens/m
+PASS  materials: FR4, Er 4.6, TanD 0.001
+PASS  materials: FR4 uses the Svensson/Djordjevic model at 1 GHz (as in the workbook screenshot)
+PASS  substrate: AIR / cover / dielectric / interface / AIR, listed bottom to top
+PASS  substrate: infinite ground plane (cover) under the dielectric
+PASS  substrate: FR4 slab 1.6 mm
+PASS  substrate: open air half-space above the patch (needed for far fields)
+PASS  substrate: layout layer 1 (cond) mapped to the top FR4 surface
+PASS  substrate: cond is Copper, 35 micron
+PASS  substrate: cond is a thick conductor set to 'Intrude into substrate'
+PASS  substrate references only materials that materials.matdb defines
+
+-- AEL builder script --
+PASS  AEL: braces, parentheses and string quotes balance
+PASS  AEL: calls only the 32 ADS functions verified in the Keysight AEL manual
+PASS  AEL: all 9 own functions carry the spa_ prefix
+PASS  AEL: every statement line is terminated
+PASS  AEL: 1 polygon(s) opened and closed
+PASS  AEL: the 12 db_add_point coordinates equal the validated geometry
+PASS  AEL: 1 db_create_pin call(s) match the validated pin list (numbers, names, positions)
+PASS  AEL: the materials file it writes is byte-identical to ads_files/materials.matdb
+PASS  AEL: the substrate file it writes is byte-identical to ads_files/Patch_FR4_1p6mm.subst
+PASS  AEL: EM setup goes to <library>/%Single_%Patch_%Antenna/em%Setup
+PASS  AEL: geometry is saved before any file is written or the workspace reopened
+
+-- EM setup state file --
+PASS  EM setup: well-formed XML, root <EmSimSetup>
+PASS  EM setup: uses only elements that occur in the ADS-written reference state file
+PASS  EM setup: frequency plan row 1 = Adaptive, 2.1 GHz to 2.7 GHz, 50 (max)
+PASS  EM setup: substrate reference <library>:Patch_FR4_1p6mm (library name filled in by the AEL script)
+PASS  EM setup: bound to Single_Patch_Antenna / layout
+PASS  EM setup: dataset Single_Patch_Antenna_MomUW (fitted data in Single_Patch_Antenna_MomUW_a)
+PASS  EM setup: Momentum microwave mode (required for far fields), S-parameter simulation
+PASS  EM setup: no cached pins/ports - ADS derives the 1 port(s) from the layout pins
+PASS  EM setup: layer option maps reference only the cond layer
+
+-- data display --
+PASS  Single_Patch_Antenna_Results.dds: braces, parentheses and string quotes balance
+PASS  Single_Patch_Antenna_Results.dds: object types ['Equation', 'Listing', 'Plot', 'SmithChart', 'Text'] all occur in the ADS-saved reference display
+PASS  Single_Patch_Antenna_Results.dds: every property name occurs in the reference display
+PASS  Single_Patch_Antenna_Results.dds: 42 object ids, all unique
+PASS  Single_Patch_Antenna_Results.dds: every plotted variable is defined by an equation on the page
+
+-- fallback import files --
+PASS  GDSII: re-read 1 closed boundary element(s), coordinates identical to the geometry
+PASS  GDSII: everything on layer 1 (cond in the Standard ADS Layers)
+PASS  GDSII: database unit 1 nm, user unit 1 um
+PASS  DXF: 1 closed polyline(s) on layer cond, millimetres
+
+RESULT: all static checks passed
+
+ADS functions used by the AEL script and where each is documented:
+    db_add_point                             ADS 2011 AEL manual
+    db_add_polygon                           ADS 2011 AEL manual
+    db_create_pin                            ADS 2011 AEL manual
+    db_end                                   ADS 2011 AEL manual
+    db_get_context_unit_name                 ADS 2011 AEL manual
+    db_get_layerid                           ADS 2011 AEL manual
+    db_get_mks_to_uu_factor                  ADS 2011 AEL manual
+    db_save_design_without_prompting         ADS 2011 AEL manual
+    de_cellview_exists                       ADS 2011 AEL manual
+    de_close_workspace_without_prompting     ADS 2011 AEL manual
+    de_copy_file                             ADS 2011 AEL manual
+    de_create_new_layout_view                ADS 2011 AEL manual
+    de_get_design_context_from_name          ADS 2011 AEL manual
+    de_info                                  ADS 2011 AEL manual
+    de_is_library_open                       ADS 2011 AEL manual
+    de_is_project_or_workspace_open          ADS 2011 AEL manual
+    de_open_workspace                        ADS 2011 AEL manual
+    de_show_context_in_new_window            ADS 2011 AEL manual
+    fclose                                   ADS 2011 AEL manual
+    fgets                                    ADS 2011 AEL manual
+    fopen                                    ADS 2011 AEL manual
+    fputs                                    ADS 2011 AEL manual
+    getcwd                                   ADS 2011 AEL manual
+    index                                    ADS 2011 AEL manual
+    leftstr                                  ADS 2011 AEL manual
+    list                                     ADS 2011 AEL manual
+    mkdir                                    ADS 2011 AEL manual
+    nth                                      ADS 2011 AEL manual
+    rightstr                                 ADS 2011 AEL manual
+    strcat                                   ADS 2011 AEL manual
+    strlen                                   ADS 2011 AEL manual
+    what_file                                ADS 2011 AEL manual

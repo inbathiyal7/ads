@@ -1,0 +1,374 @@
+// ============================================================================================
+// build_Single_Patch_Antenna.ael
+//
+// Part 1 - inset-fed patch antenna, 2.4 GHz
+// Source: RF and Microwave Engineering Lab workbook, PDF pages 75-86.
+//
+// WHAT IT DOES (inside the ADS workspace that is currently open):
+//   1. creates the cell Single_Patch_Antenna with a layout view
+//   2. draws the copper on layer cond:drawing from the workbook coordinates (mm)
+//   3. adds 1 pin (P1) on the open end of the feed line
+//   4. saves the design
+//   5. writes the substrate Patch_FR4_1p6mm (FR4 1.6 mm, Er 4.6, TanD 0.001; Copper 35 um,
+//      5.8e7 S/m, intrude into substrate) and its materials into the library
+//   6. writes an EM setup: Momentum microwave, adaptive 2.1-2.7 GHz, that substrate
+//   7. copies the data display Single_Patch_Antenna_Results.dds into the workspace
+//   8. closes and reopens the workspace so ADS reads the new files, then shows the layout
+//
+// HOW TO RUN:
+//   a. ADS: File > New > Workspace (name e.g. Single_Patch_Antenna_wrk).  Keep the default library and choose
+//      the layout technology "Standard ADS Layers, 0.0001 millimeter layout resolution".
+//   b. ADS Main window: Tools > Command Line...  then type, with YOUR path and forward slashes:
+//          load("C:/path/to/Single_Patch_Antenna/build_Single_Patch_Antenna.ael");
+//      and press Apply.
+//
+// Steps 1-4 use only AEL functions documented in the ADS 2011 AEL manual (and still present
+// in ADS 2025).  Steps 5-7 write text files in the formats ADS itself writes.  Nothing here
+// was executed in ADS by its author - see README.md for what was and was not verified.
+// ============================================================================================
+
+// ---- settings you may change ---------------------------------------------------------
+decl SPA_LIBRARY           = "";     // "" = first library defined in the workspace lib.defs
+decl SPA_WRITE_SUBSTRATE   = TRUE;   // step 5
+decl SPA_WRITE_EM_SETUP    = TRUE;   // step 6 (set FALSE to create the EM setup by hand)
+decl SPA_COPY_DISPLAY      = TRUE;   // step 7
+decl SPA_REOPEN_WORKSPACE  = TRUE;   // step 8
+
+// ---- fixed names ---------------------------------------------------------------------
+decl SPA_CELL     = "Single_Patch_Antenna";
+decl SPA_CELL_DIR = "%Single_%Patch_%Antenna";   // on-disk (OpenAccess) name of that cell
+decl SPA_SUBST    = "Patch_FR4_1p6mm";
+decl SPA_SCRIPT   = "build_Single_Patch_Antenna.ael";
+decl SPA_DISPLAY  = "Single_Patch_Antenna_Results.dds";
+decl spa_log = "";
+
+defun spa_note(sMsg)
+{
+    spa_log = strcat(spa_log, sMsg, "\n");
+    fputs(stderr, sMsg);
+}
+
+defun spa_file_exists(sFile)
+{
+    decl fId = fopen(sFile, "R");
+    if (fId == NULL)
+        return FALSE;
+    fclose(fId);
+    return TRUE;
+}
+
+// Returns list(libraryName, libraryDirectory) read from the workspace lib.defs, or NULL.
+defun spa_find_library(sWrk)
+{
+    decl fId, sLine, sRest, nPos, sName, sDir;
+    if (SPA_LIBRARY != "")
+        return list(SPA_LIBRARY, strcat(sWrk, "/", SPA_LIBRARY));
+    fId = fopen(strcat(sWrk, "/lib.defs"), "R");
+    if (fId == NULL)
+        return NULL;
+    sLine = fgets(fId);
+    while (sLine != NULL)
+    {
+        if (index(sLine, "DEFINE ") == 0)
+        {
+            sRest = rightstr(sLine, strlen(sLine) - 7);
+            nPos = index(sRest, " ");
+            if (nPos > 0)
+            {
+                sName = leftstr(sRest, nPos);
+                sDir = rightstr(sRest, strlen(sRest) - nPos - 1);
+                if (index(sDir, "$") != 0)
+                {
+                    fclose(fId);
+                    if (index(sDir, "./") == 0)
+                        sDir = rightstr(sDir, strlen(sDir) - 2);
+                    if ((index(sDir, ":") != 1) && (index(sDir, "/") != 0))
+                        sDir = strcat(sWrk, "/", sDir);
+                    return list(sName, sDir);
+                }
+            }
+        }
+        sLine = fgets(fId);
+    }
+    fclose(fId);
+    return NULL;
+}
+
+// Steps 2-3.  k converts millimetres to the layout's user units, whatever they are.
+defun spa_draw(ctx, lay, k)
+{
+    decl shp;
+    // workbook page 76 coordinate list (the repeated closing point (0, 0) is implied)
+    db_add_polygon(ctx);
+    db_add_point(ctx, 0.0*k, 0.0*k);
+    db_add_point(ctx, 0.0*k, 29.2*k);
+    db_add_point(ctx, 29.2*k, 29.2*k);
+    db_add_point(ctx, 29.2*k, 0.0*k);
+    db_add_point(ctx, 17.5*k, 0.0*k);
+    db_add_point(ctx, 17.5*k, 12.0*k);
+    db_add_point(ctx, 16.1*k, 12.0*k);
+    db_add_point(ctx, 16.1*k, -10.0*k);
+    db_add_point(ctx, 13.1*k, -10.0*k);
+    db_add_point(ctx, 13.1*k, 12.0*k);
+    db_add_point(ctx, 11.7*k, 12.0*k);
+    db_add_point(ctx, 11.7*k, 0.0*k);
+    shp = db_end(ctx, lay);
+    if (shp == NULL)
+        spa_note("! polygon 1 was not created");
+    // pins: x, y, angle 270 (pointing out of the feed-line end), layer, number, name
+    db_create_pin(ctx, 14.6*k, -10.0*k, 270, lay, 1, "P1");
+}
+
+defun spa_write_materials(sLibDir)
+{
+    decl sFile = strcat(sLibDir, "/", "materials.matdb");
+    decl fId;
+    if (spa_file_exists(sFile))
+    {
+        spa_note(strcat("- kept the existing file ", sFile, " (not overwritten)"));
+        return FALSE;
+    }
+    fId = fopen(sFile, "W");
+    if (fId == NULL)
+    {
+        spa_note(strcat("! could not write ", sFile));
+        return FALSE;
+    }
+    fputs(fId, "<!DOCTYPE Materials>");
+    fputs(fId, "<Materials>");
+    fputs(fId, "    <Conductors>");
+    fputs(fId, "        <Conductor parmtype=\"1\" imag=\"\" name=\"Copper\" real=\"5.8e7 Siemens/m\"/>");
+    fputs(fId, "    </Conductors>");
+    fputs(fId, "    <Dielectrics>");
+    fputs(fId, "        <Dielectric loss_type=\"1\" mur_real=\"1\" lowfreq=\"1 KHz\" valuefreq=\"1 GHz\" er_imag=\"\" highfreq=\"1 THz\" er_loss=\"0.001\" name=\"FR4\" er_real=\"4.6\" mur_imag=\"\"/>");
+    fputs(fId, "    </Dielectrics>");
+    fputs(fId, "    <Semiconductors/>");
+    fputs(fId, "    <roughness/>");
+    fputs(fId, "</Materials>");
+    fclose(fId);
+    spa_note("- wrote materials.matdb (Copper 5.8e7 S/m; FR4 Er 4.6, TanD 0.001)");
+    return TRUE;
+}
+
+defun spa_write_substrate(sLibDir)
+{
+    decl sFile = strcat(sLibDir, "/", strcat(SPA_SUBST, ".subst"));
+    decl fId;
+    if (spa_file_exists(sFile))
+    {
+        spa_note(strcat("- kept the existing file ", sFile, " (not overwritten)"));
+        return FALSE;
+    }
+    fId = fopen(sFile, "W");
+    if (fId == NULL)
+    {
+        spa_note(strcat("! could not write ", sFile));
+        return FALSE;
+    }
+    fputs(fId, "<!DOCTYPE Substrate>");
+    fputs(fId, "<SubstrateModel>");
+    fputs(fId, "    <stack>");
+    fputs(fId, "        <material materialname=\"AIR\"/>");
+    fputs(fId, "        <interface materialname=\"PERFECT_CONDUCTOR\" thick=\"0\" thickunit=\"micron\" groundplane=\"1\"/>");
+    fputs(fId, "        <material materialname=\"FR4\" thick=\"1.6\" thickunit=\"millimeter\"/>");
+    fputs(fId, "        <interface materialname=\"\" thick=\"0\" thickunit=\"micron\"/>");
+    fputs(fId, "        <material materialname=\"AIR\"/>");
+    fputs(fId, "    </stack>");
+    fputs(fId, "    <layers>");
+    fputs(fId, "        <layer materialname=\"Copper\" toprough=\"\" bottomrough=\"\" thick=\"35\" precedence=\"1\" sheet=\"0\" thickunit=\"micron\" layer=\"1\" negative=\"0\" subtype=\"0\" expand=\"0\" index=\"1\"/>");
+    fputs(fId, "    </layers>");
+    fputs(fId, "    <vias/>");
+    fputs(fId, "    <substrates/>");
+    fputs(fId, "</SubstrateModel>");
+    fclose(fId);
+    spa_note("- wrote substrate Patch_FR4_1p6mm (FR4 1.6 mm on ground, cond = Copper 35 um intruding)");
+    return TRUE;
+}
+
+defun spa_write_default_substrate(sLibDir, sLib)
+{
+    decl sFile = strcat(sLibDir, "/eesof_lib.cfg");
+    decl fId;
+    if (spa_file_exists(sFile))
+        return FALSE;
+    fId = fopen(sFile, "W");
+    if (fId == NULL)
+        return FALSE;
+    fputs(fId, strcat("DEFAULT_SUBSTRATE=", sLib, ":", SPA_SUBST));
+    fclose(fId);
+    return TRUE;
+}
+
+// Step 6.  The emSetup view is a folder holding emStateFile.xml, an empty marker file and
+// master.tag.  The state file is copied from ads_files/ with three lines filled in.
+defun spa_write_em_setup(sPkg, sWrk, sLib, sLibDir)
+{
+    decl sView = strcat(sLibDir, "/", SPA_CELL_DIR, "/em%Setup");
+    decl sSrc = strcat(sPkg, "ads_files/emStateFile.xml");
+    decl sDst = strcat(sView, "/emStateFile.xml");
+    decl fIn, fOut, fId, sLine;
+    if (spa_file_exists(sDst))
+    {
+        spa_note("- an EM setup already exists for this cell: left untouched");
+        return FALSE;
+    }
+    fIn = fopen(sSrc, "R");
+    if (fIn == NULL)
+    {
+        spa_note(strcat("! EM setup NOT written: cannot read ", sSrc));
+        return FALSE;
+    }
+    mkdir(sView);
+    fOut = fopen(sDst, "W");
+    if (fOut == NULL)
+    {
+        fclose(fIn);
+        spa_note(strcat("! EM setup NOT written: cannot create ", sDst));
+        return FALSE;
+    }
+    sLine = fgets(fIn);
+    while (sLine != NULL)
+    {
+        if (index(sLine, "<workspaceText>") > -1)
+            sLine = strcat("      <workspaceText>", sWrk, "</workspaceText>");
+        if (index(sLine, "<libraryText>") > -1)
+            sLine = strcat("      <libraryText>", sLib, "</libraryText>");
+        if (index(sLine, "<libSubstName>") > -1)
+            sLine = strcat("      <libSubstName>", sLib, ":", SPA_SUBST, "</libSubstName>");
+        fputs(fOut, sLine);
+        sLine = fgets(fIn);
+    }
+    fclose(fIn);
+    fclose(fOut);
+    fId = fopen(strcat(sView, "/eesof_em_setup.file"), "W");
+    if (fId != NULL)
+        fclose(fId);
+    de_copy_file(strcat(sPkg, "ads_files/master.tag"), strcat(sView, "/master.tag"));
+    if (!spa_file_exists(strcat(sView, "/master.tag")))
+    {
+        spa_note("! EM setup incomplete: master.tag could not be copied");
+        return FALSE;
+    }
+    spa_note("- wrote the EM setup (Momentum microwave, adaptive 2.1-2.7 GHz, substrate Patch_FR4_1p6mm)");
+    return TRUE;
+}
+
+defun spa_build()
+{
+    decl sWrk, lLib, sLib, sLibDir, sMe, sPkg, ctx, lay, k, bEm, sDsn;
+    spa_log = "";
+    bEm = FALSE;
+
+    if (!de_is_project_or_workspace_open())
+    {
+        de_info("No workspace is open.\n\nCreate one first (File > New > Workspace, Standard ADS Layers, 0.0001 millimeter), then load this script again.");
+        return FALSE;
+    }
+    sWrk = getcwd();
+    lLib = spa_find_library(sWrk);
+    if (lLib == NULL)
+    {
+        de_info(strcat("No library was found in ", sWrk, "/lib.defs.\n\nSet SPA_LIBRARY at the top of this script to the name of your library."));
+        return FALSE;
+    }
+    sLib = nth(0, lLib);
+    sLibDir = nth(1, lLib);
+    if (!de_is_library_open(sLib))
+    {
+        de_info(strcat("Library ", sLib, " is not open in this workspace."));
+        return FALSE;
+    }
+    if (de_cellview_exists(sLib, SPA_CELL, "layout"))
+    {
+        de_info(strcat("Cell ", SPA_CELL, " already has a layout in library ", sLib, ".\n\nNothing was changed. Delete that cell, or use a new workspace, and load this script again."));
+        return FALSE;
+    }
+
+    // where this script lives (for the files in ads_files/)
+    sMe = what_file(0);
+    sPkg = "";
+    if (strlen(sMe) >= strlen(SPA_SCRIPT))
+        sPkg = leftstr(sMe, strlen(sMe) - strlen(SPA_SCRIPT));
+
+    // ---- 1-4: layout, copper, pins, save ----
+    ctx = de_create_new_layout_view(sLib, SPA_CELL, "layout");
+    if (ctx == NULL)
+    {
+        de_info("The layout view could not be created.");
+        return FALSE;
+    }
+    lay = db_get_layerid(ctx, "cond", "drawing");
+    if (lay == NULL)
+    {
+        de_info("Layer cond:drawing was not found. The library must use the Standard ADS Layers technology.");
+        return FALSE;
+    }
+    k = db_get_mks_to_uu_factor(ctx) * 0.001;
+    spa_draw(ctx, lay, k);
+    db_save_design_without_prompting(ctx);
+    spa_note(strcat("Built ", sLib, ":", SPA_CELL, ":layout  (1 polygon, 1 pin, layout unit: ", db_get_context_unit_name(ctx), ")"));
+
+    // ---- 5: substrate and materials ----
+    if (SPA_WRITE_SUBSTRATE)
+    {
+        spa_write_materials(sLibDir);
+        spa_write_substrate(sLibDir);
+        spa_write_default_substrate(sLibDir, sLib);
+    }
+
+    // ---- 6: EM setup ----
+    if (SPA_WRITE_EM_SETUP)
+        bEm = spa_write_em_setup(sPkg, sWrk, sLib, sLibDir);
+
+    // ---- 7: data display ----
+    if (SPA_COPY_DISPLAY)
+    {
+        if (spa_file_exists(strcat(sWrk, "/", SPA_DISPLAY)))
+        {
+            spa_note("- kept the existing data display (not overwritten)");
+        }
+        else
+        {
+            if (spa_file_exists(strcat(sPkg, "ads_files/", SPA_DISPLAY)))
+            {
+                de_copy_file(strcat(sPkg, "ads_files/", SPA_DISPLAY), strcat(sWrk, "/", SPA_DISPLAY));
+                spa_note(strcat("- copied ", SPA_DISPLAY, " into the workspace"));
+            }
+            else
+            {
+                spa_note(strcat("! data display not copied: ads_files/", SPA_DISPLAY, " not found next to the script"));
+            }
+        }
+    }
+
+    // ---- 8: let ADS re-read the library from disk, then show the layout ----
+    sDsn = strcat(sLib, ":", SPA_CELL, ":layout");
+    if (SPA_REOPEN_WORKSPACE)
+    {
+        de_close_workspace_without_prompting();
+        de_open_workspace(sWrk);
+        ctx = de_get_design_context_from_name(sDsn);
+    }
+    de_show_context_in_new_window(ctx);
+
+    spa_note("");
+    spa_note("NEXT, in the layout window:");
+    if (bEm)
+    {
+        spa_note("  1. EM > Simulation Setup. Check Substrate = Patch_FR4_1p6mm and the frequency plan (Adaptive 2.1-2.7 GHz).");
+        spa_note("  2. Frequency plan > Add > Type: Single, 2.4 GHz (workbook step 3.3).");
+        spa_note("  3. Simulate.");
+    }
+    else
+    {
+        spa_note("  1. EM > Simulation Setup. Substrate: choose Patch_FR4_1p6mm.");
+        spa_note("  2. Frequency plan: Adaptive 2.1-2.7 GHz, then Add > Single 2.4 GHz.");
+        spa_note("  3. Simulate.");
+    }
+    spa_note(strcat("  4. Results: File > Open > Data Display > ", SPA_DISPLAY));
+    spa_note("  5. Far field: EM > Post-Processing > Far Field, 2.4 GHz, Compute (see README.md).");
+    de_info(spa_log);
+    return TRUE;
+}
+
+spa_build();

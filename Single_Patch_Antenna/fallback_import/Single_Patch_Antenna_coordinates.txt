@@ -1,0 +1,19 @@
+Single_Patch_Antenna - copper outline, all dimensions in millimetres
+Layer: cond (ADS standard layer 1).  Each polygon is closed; the first vertex is not repeated.
+
+Polygon 1
+    (0.0, 0.0)
+    (0.0, 29.2)
+    (29.2, 29.2)
+    (29.2, 0.0)
+    (17.5, 0.0)
+    (17.5, 12.0)
+    (16.1, 12.0)
+    (16.1, -10.0)
+    (13.1, -10.0)
+    (13.1, 12.0)
+    (11.7, 12.0)
+    (11.7, 0.0)
+
+Pins (on layer cond, at the centre of each feed-line end, 50 Ohm ports)
+    P1   (14.6, -10.0)
